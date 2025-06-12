@@ -1,7 +1,7 @@
 import serial
 
 ser = serial.Serial('COM5', 115200, timeout=None) # always reciever 
-
+ # This is the change, it's just to know 
 def decode_ahoi_packet(data):
     # Extract the  header: [src, dst, type, status, dsn, len]
     header = data[:6]

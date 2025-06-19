@@ -1,10 +1,16 @@
 cmake_minimum_required(VERSION 3.15)
 
-set(PROJECT_NAME "ascon-demo")
-set(EXECUTABLE_NAME ${PROJECT_NAME})
+include(config.cmake)
 
 project(${PROJECT_NAME} C)
 
 add_executable(${EXECUTABLE_NAME})
 
+add_subdirectory(thirdparty/ascon-c)
 add_subdirectory(src)
+
+# Needed for correct Ascon linking
+if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.13.0")
+    target_link_options(${EXECUTABLE_NAME} PRIVATE $<$<CONFIG:DEBUG>:-fsanitize=address>)
+endif ()
+target_link_libraries(${EXECUTABLE_NAME} PUBLIC ${ASCON_LIB_NAME})

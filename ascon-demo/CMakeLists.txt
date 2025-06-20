@@ -4,9 +4,14 @@ include(config.cmake)
 
 project(${PROJECT_NAME} C)
 
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+include(GitAddSubmodule)
+
 add_executable(${EXECUTABLE_NAME})
 
-add_subdirectory(thirdparty/ascon-c)
+add_git_submodule(DIRECTORY thirdparty/ascon-c
+                PROPAGATE ON
+                PATCHES "patches/ascon-fix.patch")
 add_subdirectory(src)
 
 # Needed for correct Ascon linking

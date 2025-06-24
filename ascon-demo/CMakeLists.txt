@@ -1,15 +1,11 @@
-cmake_minimum_required(VERSION 3.10...3.25)
+cmake_minimum_required(VERSION 3.15)
 
 include(config.cmake)
 
-#set(PROJECT_NAME ascon-demo)
-#set(EXECUTABLE_NAME ascon-demo)
-#set(ASCON_LIB_NAME ascon)
 project(${PROJECT_NAME} C)
 
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
-#it's working
 include(GitAddSubmodule)
 
 add_executable(${EXECUTABLE_NAME})

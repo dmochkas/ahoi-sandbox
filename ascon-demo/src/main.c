@@ -1,58 +1,54 @@
-
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
-#include <stdlib.h>
-#include "ascon.h"
-#include "api.h"
+#include "ascon.h"  // Make sure this is the 7-parameter version
 
-// TODO: define Ascon input variables here (e.g secret key)
+#define MAX_INPUT_SIZE 128
+#define KEY_SIZE 16
+#define NONCE_SIZE 16
+#define TAG_SIZE 16
 
-int crypto_aead_encrypt(
-    unsigned char *c, unsigned long long *clen,
-    const unsigned char *m, unsigned long long mlen,
-    const unsigned char *ad, unsigned long long adlen,
-    const unsigned char *nsec,
-    const unsigned char *npub,
-    const unsigned char *k);
+char input[MAX_INPUT_SIZE];
+const char* associated_data = "ASCON_AD";
 
-int crypto_aead_decrypt(
-    unsigned char *m, unsigned long long *mlen,
-    unsigned char *nsec,
-    const unsigned char *c, unsigned long long clen,
-    const unsigned char *ad, unsigned long long adlen,
-    const unsigned char *npub,
-    const unsigned char *k);
+uint8_t key[KEY_SIZE] = {0x00};
+uint8_t nonce[NONCE_SIZE] = {0x00};
+uint8_t tag[TAG_SIZE];
+
+uint8_t ciphertext[MAX_INPUT_SIZE];
+uint8_t decrypted[MAX_INPUT_SIZE];
+
+void print_hex(const char* label, const uint8_t* data, size_t len) {
+    printf("%s: ", label);
+    for (size_t i = 0; i < len; ++i) {
+        printf("%02x", data[i]);
+    }
+    printf("\n");
+}
 
 int main() {
+    
+    printf("Enter your plaintext message: ");
+    if (fgets(input, sizeof(input), stdin) == NULL) {
+    fprintf(stderr, "Error reading input.\n");
+    return 1;
+    }
+    input[strcspn(input, "\n")] = '\0'; // remove newline character
 
-    // TODO: Read the input from the console
+    size_t mlen = strlen(input);
+    size_t adlen = strlen(associated_data);
 
-    unsigned char key[CRYPTO_KEYBYTES] = {0};
-    unsigned char nonce[CRYPTO_NPUBBYTES] = {0};
-    unsigned char ad[] = "associated data";  // Optional
-    const unsigned char *nsec = NULL;
+    // Show Key, Nonce, AD
+    print_hex("Key", key, KEY_SIZE);
+    print_hex("Nonce", nonce, NONCE_SIZE);
+    printf("Associated Data (AD): %s\n", associated_data);
 
-    // User input
-    char input[256];
-    printf("Enter the plaintext to encrypt: ");
-    fgets(input, sizeof(input), stdin);
-    size_t mlen = strcspn(input, "\n");  // Remove newline character
-
-    // Output buffers
-    unsigned char ciphertext[512];
-    unsigned long long clen;
-
-    unsigned char decrypted[256];
-    unsigned long long decrypted_len;
-
-    // TODO: Use encrypt function to encrypt the user input
-    // ascon_aead_encrypt();
-
-     int enc_result = crypto_aead_encrypt(
-        ciphertext, &clen,
-        (unsigned char *)input, mlen,
-        ad, strlen((char *)ad),
-        nsec, nonce, key
+    // Encryption
+    int enc_result = ascon_aead_encrypt(
+        tag, ciphertext,
+        (const uint8_t*)input, mlen,
+        (const uint8_t*)associated_data, adlen,
+        nonce, key
     );
 
     if (enc_result != 0) {
@@ -60,29 +56,23 @@ int main() {
         return 1;
     }
 
-    printf("\nCiphertext (hex): ");
-    for (unsigned long long i = 0; i < clen; i++) {
-        printf("%02X", ciphertext[i]);
-    }
-    printf("\n");
+    print_hex("Ciphertext", ciphertext, mlen);
+    print_hex("Tag", tag, TAG_SIZE);
 
-    // TODO: Print the result
-
-    // TODO: Decrypt the encrypted ciphertext and print it
-    int dec_result = crypto_aead_decrypt(
-        decrypted, &decrypted_len,
-        NULL,
-        ciphertext, clen,
-        ad, strlen((char *)ad),
+    // Decryption
+    int dec_result = ascon_aead_decrypt(
+        decrypted,
+        tag, ciphertext, mlen,
+        (const uint8_t*)associated_data, adlen,
         nonce, key
     );
 
-    if (dec_result != 0) {
+    if (dec_result == 0) {
+        decrypted[mlen] = '\0'; // null-terminate the decrypted message
+        printf("Decrypted Message: %s\n", decrypted);
+    } else {
         printf("Decryption failed!\n");
-        return 1;
     }
 
-    printf("Decrypted text: %.*s\n", (int)decrypted_len, decrypted);
-    
-    return EXIT_SUCCESS;
+    return 0;
 }

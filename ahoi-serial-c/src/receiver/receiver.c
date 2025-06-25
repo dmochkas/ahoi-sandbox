@@ -4,6 +4,8 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include "ascon.h"
+
 #include "commons/ahoi_serial.h"
 
 void decode_ahoi_packet(uint8_t *data, int len) {
@@ -50,6 +52,12 @@ int main() {
             if (byte == 0x10) {
                 if (read(fd, &byte, 1) == 1) {
                     if (byte == 0x03) {
+                        // TODO:
+                        // - Use Ascon here
+                        // - Payload should be decrypted
+                        // - Remember: header is AD!
+                        // - Remember: last 16 bytes is Ascon tag!
+
                         decode_ahoi_packet(buffer, buf_pos);
                         in_packet = 0;
                     } else if (byte == 0x10) {

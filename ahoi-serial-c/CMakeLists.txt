@@ -9,6 +9,7 @@ include(config.cmake)
 include(sender-config.cmake)
 include(receiver-config.cmake)
 
+set(ASCON_LIB_NAME "crypto_aead_${ALG_NAME}_${IMPL_LIST}")
 set(COMMONS_LIB_NAME "commons-lib")
 set(SENDER_TARGET "sender")
 set(SENDER_LIB_NAME "sender-objects")
@@ -24,5 +25,9 @@ add_subdirectory(src/receiver)
 
 
 add_executable(${SENDER_TARGET} $<TARGET_OBJECTS:${SENDER_LIB_NAME}> $<TARGET_OBJECTS:${COMMONS_LIB_NAME}>)
-
 add_executable(${RECEIVER_TARGET} $<TARGET_OBJECTS:${RECEIVER_LIB_NAME}> $<TARGET_OBJECTS:${COMMONS_LIB_NAME}>)
+
+if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.13.0")
+    target_link_options(${SENDER_TARGET} PRIVATE $<$<CONFIG:DEBUG>:-fsanitize=address,undefined>)
+    target_link_options(${RECEIVER_TARGET} PRIVATE $<$<CONFIG:DEBUG>:-fsanitize=address,undefined>)
+endif ()

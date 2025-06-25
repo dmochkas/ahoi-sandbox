@@ -4,6 +4,8 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include "ascon.h"
+
 #include "commons/ahoi_serial.h"
 
 int main() {
@@ -17,6 +19,12 @@ int main() {
     printf("Enter the word to send: ");
     fgets(payload, sizeof(payload), stdin);
     payload[strcspn(payload, "\n")] = 0;  // Remove newline
+
+    // TODO:
+    // - Use Ascon here
+    // - Payload should be encrypted
+    // - header should be considered AD
+    // - send encrypted payload + Ascon tag
 
     send_ahoi_packet(fd, 0x56, 0x58, 0x00, payload);
     close(fd);

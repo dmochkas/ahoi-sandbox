@@ -1,8 +1,8 @@
-Submodule ascon-serial-c/thirdparty/ascon-c contains modified content
-diff --git a/ascon-serial-c/thirdparty/ascon-c/CMakeLists.txt b/ascon-serial-c/thirdparty/ascon-c/CMakeLists.txt
+Submodule ahoi-serial-c/thirdparty/ascon-c contains modified content
+diff --git a/ahoi-serial-c/thirdparty/ascon-c/CMakeLists.txt b/ahoi-serial-c/thirdparty/ascon-c/CMakeLists.txt
 index a884866..7a42dff 100644
---- a/ascon-serial-c/thirdparty/ascon-c/CMakeLists.txt
-+++ b/ascon-serial-c/thirdparty/ascon-c/CMakeLists.txt
+--- a/ahoi-serial-c/thirdparty/ascon-c/CMakeLists.txt
++++ b/ahoi-serial-c/thirdparty/ascon-c/CMakeLists.txt
 @@ -59,15 +59,15 @@ foreach(CRYPTO aead hash cxof auth)
        foreach(IMPL ${IMPL_LIST})
          set(IMPL_PATH crypto_${CRYPTO}/${ALG}${VER}/${IMPL})

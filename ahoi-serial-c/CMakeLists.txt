@@ -5,6 +5,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 include(GitAddSubmodule)
+include(config.cmake)
 include(sender-config.cmake)
 include(receiver-config.cmake)
 

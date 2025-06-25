@@ -1,7 +1,8 @@
-#include "../include/ahoi_serial.h"
+#include <stdio.h>
 #include <fcntl.h>
 #include <termios.h>
-#include <unistd.h>
+
+#include "commons/ahoi_serial.h"
 
 int open_serial_port(const char *port, int baudrate) {
     int fd = open(port, O_RDWR | O_NOCTTY | O_NDELAY);

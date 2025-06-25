@@ -3,10 +3,11 @@
 #include <fcntl.h>
 #include <termios.h>
 #include <unistd.h>
-#include "../include/ahoi_serial.h"
+
+#include "commons/ahoi_serial.h"
 
 int main() {
-    const char *port = "/dev/ttyS1";
+    const char *port = SENDER_SERIAL_PORT;
     int baudrate = B115200;
     int fd = open_serial_port(port, baudrate);
 

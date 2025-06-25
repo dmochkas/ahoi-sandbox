@@ -3,6 +3,20 @@ project(ahoi_serial C)
 
 set(CMAKE_C_STANDARD 11)
 
-# Configuration for Linux (termios)
-add_executable(sender src/sender/sender.c src/serial_utils.c)
-add_executable(receiver src/receiver/receiver.c src/serial_utils.c)
+include(sender-config.cmake)
+include(receiver-config.cmake)
+
+set(COMMONS_LIB_NAME "commons-lib")
+set(SENDER_TARGET "sender")
+set(SENDER_LIB_NAME "sender-objects")
+set(RECEIVER_TARGET "receiver")
+set(RECEIVER_LIB_NAME "receiver-objects")
+
+add_subdirectory(src/commons)
+add_subdirectory(src/sender)
+add_subdirectory(src/receiver)
+
+
+add_executable(${SENDER_TARGET} $<TARGET_OBJECTS:${SENDER_LIB_NAME}> $<TARGET_OBJECTS:${COMMONS_LIB_NAME}>)
+
+add_executable(${RECEIVER_TARGET} $<TARGET_OBJECTS:${RECEIVER_LIB_NAME}> $<TARGET_OBJECTS:${COMMONS_LIB_NAME}>)

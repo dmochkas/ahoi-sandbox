@@ -1,0 +1,1 @@
+set(SENDER_SERIAL_PORT "/dev/ttyS1" CACHE STRING "Serial port to use for sender")

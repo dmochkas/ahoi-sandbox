@@ -3,7 +3,8 @@
 #include <fcntl.h>
 #include <termios.h>
 #include <unistd.h>
-#include "../include/ahoi_serial.h"
+
+#include "commons/ahoi_serial.h"
 
 void decode_ahoi_packet(uint8_t *data, int len) {
     if (len < 6) return;
@@ -27,7 +28,7 @@ void decode_ahoi_packet(uint8_t *data, int len) {
 }
 
 int main() {
-    const char *port = "/dev/ttyS2";
+    const char *port = RECEIVER_SERIAL_PORT;
     int fd = open_serial_port(port, B115200);
     if (fd == -1) return 1;
 

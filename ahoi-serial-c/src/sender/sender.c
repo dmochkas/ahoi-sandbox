@@ -7,10 +7,7 @@
 
 #include "ascon.h"
 #include "commons/ahoi_serial.h"
-
-#define KEY_SIZE 16
-#define NONCE_SIZE 16
-#define  TAG_SIZE 16
+#include "commons/commons.h"
 
 // Clave and nonce
 static uint8_t key[KEY_SIZE] = {
@@ -23,7 +20,7 @@ static uint8_t nonce[NONCE_SIZE] = {
 }; //example, use one for each message
 
 int main() {
-    const char *port = "/dev/ttyUSB1";
+    const char *port = SENDER_SERIAL_PORT;
     int baudrate = B115200;
     int fd = open_serial_port(port, baudrate);
 
@@ -43,7 +40,7 @@ int main() {
     size_t mlen = strlen(plaintext);
 
     // Create Associated Data (AD)
-    uint8_t ad_header[6] = {0x58, 0x56, 0x00, 0x00, 0x00, 0x00};
+    uint8_t ad_header[HEADER_SIZE] = {0x56, 0x58, 0x00, 0x00, 0x00, 0x00};
     size_t adlen = sizeof(ad_header);
 
     // Buffers for cipher
@@ -82,7 +79,8 @@ int main() {
 void send_ahoi_packet(int fd, uint8_t dst_id, uint8_t src_id, uint8_t type, 
                      const uint8_t *payload, size_t payload_len,
                      const uint8_t *tag, size_t tag_len) {
-    uint8_t header[6] = {src_id, dst_id, type, 0x00, 0x00, (uint8_t)(payload_len + tag_len)};
+    static uint8_t sequence_number =0;
+    uint8_t header[HEADER_SIZE] = {src_id, dst_id, type, 0x00, sequence_number, (uint8_t)(payload_len + tag_len)};
     uint8_t packet[512];
     int packet_len = 0;
 
@@ -91,7 +89,7 @@ void send_ahoi_packet(int fd, uint8_t dst_id, uint8_t src_id, uint8_t type,
     packet[packet_len++] = 0x02;
 
     // Escape header
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < HEADER_SIZE; i++) {
         if (header[i] == 0x10) packet[packet_len++] = 0x10;
         packet[packet_len++] = header[i];
     }
@@ -123,4 +121,5 @@ void send_ahoi_packet(int fd, uint8_t dst_id, uint8_t src_id, uint8_t type,
     printf("Sent packet (%d bytes): ", packet_len);
     for (int i = 0; i < packet_len; i++) printf("%02X ", packet[i]);
     printf("\n");
+    sequence_number = (sequence_number +1) % 256;
  }

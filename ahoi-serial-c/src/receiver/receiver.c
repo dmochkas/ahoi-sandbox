@@ -7,10 +7,8 @@
 
 #include "ascon.h"
 #include "commons/ahoi_serial.h"
-//receiver
-#define KEY_SIZE 16
-#define NONCE_SIZE 16
-#define TAG_SIZE 16
+#include "commons/commons.h"
+
 
 // The same as in the sender
 static uint8_t key[KEY_SIZE] = {
@@ -24,30 +22,30 @@ static uint8_t nonce[NONCE_SIZE] = {
 static uint8_t decrypted[256];  // Buffer for the cipher
 
 void decode_ahoi_packet(uint8_t *data, int len) {
-    if (len < 6) {
+    if (len < HEADER_SIZE) {
         printf("Packet too short\n");
         return;
     }
 
-    uint8_t header[6];
-    memcpy(header, data, 6);
+    uint8_t header[HEADER_SIZE];
+    memcpy(header, data, HEADER_SIZE);
     uint8_t total_len = header[5];
     
     uint8_t ciphertext_len = total_len - TAG_SIZE;
     
     // Verify
     if (ciphertext_len <= 0 || ciphertext_len > sizeof(decrypted) - 1 || 
-        6 + ciphertext_len + TAG_SIZE > len) {
+        HEADER_SIZE + ciphertext_len + TAG_SIZE > len) {
         printf("Invalid lengths: total=%d, cipher=%d, tag=%d, received=%d\n",
               total_len, ciphertext_len, TAG_SIZE, len);
         return;
     }
 
-    uint8_t *ciphertext = data + 6;
-    uint8_t *tag = data + 6 + ciphertext_len;
+    uint8_t *ciphertext = data + HEADER_SIZE;
+    uint8_t *tag = data + HEADER_SIZE + ciphertext_len;
 
     // AD same as the sender
-    uint8_t ad_header[6] = {0x58, 0x56, 0x00, 0x00, 0x00, 0x00}; 
+    uint8_t ad_header[HEADER_SIZE] = {0x56, 0x58, 0x00, 0x00, 0x00, 0x00}; 
 
     printf("=== DEBUG ===\n");
     printf("Ciphertext (%d): ", ciphertext_len);
@@ -55,7 +53,7 @@ void decode_ahoi_packet(uint8_t *data, int len) {
     printf("\nTag: ");
     for(int i=0; i<TAG_SIZE; i++) printf("%02X", tag[i]);
     printf("\nAD: ");
-    for(int i=0; i<6; i++) printf("%02X", ad_header[i]);
+    for(int i=0; i<HEADER_SIZE; i++) printf("%02X", ad_header[i]);
     printf("\n=============\n");
 
     int dec_result = ascon_aead_decrypt(
@@ -74,7 +72,7 @@ void decode_ahoi_packet(uint8_t *data, int len) {
 }
 
 int main() {
-    const char *port = "/dev/ttyUSB0";
+    const char *port = RECEIVER_SERIAL_PORT;
     int fd = open_serial_port(port, B115200);
     if (fd == -1) {
         fprintf(stderr, "Error opening serial port\n");
@@ -82,9 +80,6 @@ int main() {
     }
 
     printf("Waiting for AHOI packets (using ASCON decryption)...\n");
-    printf("Using key: ");
-    for (int i = 0; i < KEY_SIZE; i++) printf("%02X", key[i]);
-    printf("\n");
 
     uint8_t buffer[512];
     int buf_pos = 0;

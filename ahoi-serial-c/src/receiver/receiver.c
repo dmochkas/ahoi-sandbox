@@ -31,9 +31,9 @@ void decode_ahoi_packet(uint8_t *data, int len) {
 
     uint8_t header[6];
     memcpy(header, data, 6);
-    int total_len = header[5];
+    uint8_t total_len = header[5];
     
-    int ciphertext_len = total_len - TAG_SIZE;
+    uint8_t ciphertext_len = total_len - TAG_SIZE;
     
     // Verify
     if (ciphertext_len <= 0 || ciphertext_len > sizeof(decrypted) - 1 || 

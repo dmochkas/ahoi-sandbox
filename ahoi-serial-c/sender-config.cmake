@@ -1,1 +1,1 @@
-set(SENDER_SERIAL_PORT "/dev/ttyS1" CACHE STRING "Serial port to use for sender")
+set(SENDER_SERIAL_PORT "/dev/ttyUSB0" CACHE STRING "Serial port to use for sender")

@@ -4,21 +4,17 @@
 #include <termios.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <time.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <getopt.h>
 
 #include "ascon.h"
 #include "commons/ahoi_serial.h"
 #include "commons/commons.h"
 
 
-// The same as in the sender
-static uint8_t key[KEY_SIZE] = {
-    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
-}; 
-static uint8_t nonce[NONCE_SIZE] = {
-    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
-    0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
-};  
+static uint8_t key[KEY_SIZE]= {0}; 
 static uint8_t decrypted[256];  // Buffer for the cipher
 
 void decode_ahoi_packet(uint8_t *data, int len) {
@@ -27,10 +23,8 @@ void decode_ahoi_packet(uint8_t *data, int len) {
         return;
     }
 
-    uint8_t header[HEADER_SIZE];
-    memcpy(header, data, HEADER_SIZE);
+    uint8_t *header = data;
     uint8_t total_len = header[5];
-    
     uint8_t ciphertext_len = total_len - TAG_SIZE;
     
     // Verify
@@ -43,23 +37,30 @@ void decode_ahoi_packet(uint8_t *data, int len) {
 
     uint8_t *ciphertext = data + HEADER_SIZE;
     uint8_t *tag = data + HEADER_SIZE + ciphertext_len;
+ 
 
-    // AD same as the sender
-    uint8_t ad_header[HEADER_SIZE] = {0x56, 0x58, 0x00, 0x00, 0x00, 0x00}; 
+    time_t now = time(NULL);
+    time_t hour_timestamp = (now / 3600) * 3600; // Round to hours
+    uint8_t sequence_number = header[4]; // Get sequence number from header
+    uint8_t nonce[NONCE_SIZE] = {0};
+    memcpy(nonce, &hour_timestamp, sizeof(hour_timestamp));
+    nonce[sizeof(hour_timestamp)] = sequence_number;
 
     printf("=== DEBUG ===\n");
-    printf("Ciphertext (%d): ", ciphertext_len);
+    printf("Nonce: ");
+    for(int i=0; i<NONCE_SIZE; i++) printf("%02X", nonce[i]);
+    printf("\nAD Header: ");
+    for(int i=0; i<HEADER_SIZE; i++) printf("%02X", header[i]);
+    printf("\nCiphertext (%d): ", ciphertext_len);
     for(int i=0; i<ciphertext_len; i++) printf("%02X", ciphertext[i]);
     printf("\nTag: ");
     for(int i=0; i<TAG_SIZE; i++) printf("%02X", tag[i]);
-    printf("\nAD: ");
-    for(int i=0; i<HEADER_SIZE; i++) printf("%02X", ad_header[i]);
     printf("\n=============\n");
 
     int dec_result = ascon_aead_decrypt(
         decrypted,
         tag, ciphertext, ciphertext_len,
-        ad_header, sizeof(ad_header),
+        header, HEADER_SIZE,
         nonce, key
     );
 
@@ -71,9 +72,43 @@ void decode_ahoi_packet(uint8_t *data, int len) {
     }
 }
 
-int main() {
-    const char *port = RECEIVER_SERIAL_PORT;
+int main(int argc, char *argv[]) {
+    const char *port = "/dev/cu.usbserial-1410";
     int fd = open_serial_port(port, B115200);
+    int opt;
+    int option_index = 0;
+    char *key_hex = NULL;
+
+    struct option long_options[] = {
+        {"key", required_argument, 0, 'k'},
+        {0, 0, 0, 0}
+    };
+
+    while ((opt = getopt_long(argc, argv, "k:", long_options, &option_index)) != -1) {
+        switch (opt) {
+            case 'k':
+                key_hex = optarg;
+                break;
+            default:
+                print_usage(argv[0]);
+                return 1;
+        }
+    }
+
+    if (!key_hex) {
+        fprintf(stderr, "Error: Encryption key is required\n");
+        print_usage(argv[0]);
+        return 1;
+    }
+
+    if (process_key(key_hex, key, KEY_SIZE) != 0) {
+        return 1;
+    }
+
+    printf("Using key: ");
+    for (int i = 0; i < KEY_SIZE; i++) printf("%02X", key[i]);
+    printf("\n");
+
     if (fd == -1) {
         fprintf(stderr, "Error opening serial port\n");
         return 1;
@@ -98,7 +133,6 @@ int main() {
             if (byte == 0x10) {
                 if (read(fd, &byte, 1) == 1) {
                     if (byte == 0x03) {
-                        
                         decode_ahoi_packet(buffer, buf_pos);
                         in_packet = 0;
                     } else if (byte == 0x10) {

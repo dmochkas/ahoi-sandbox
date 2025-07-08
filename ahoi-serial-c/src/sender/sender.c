@@ -4,23 +4,53 @@
 #include <termios.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <time.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <getopt.h>
 
 #include "ascon.h"
 #include "commons/ahoi_serial.h"
 #include "commons/commons.h"
 
-// Clave and nonce
-static uint8_t key[KEY_SIZE] = {
-    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
-}; 
-static uint8_t nonce[NONCE_SIZE] = {
-    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
-    0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
-}; //example, use one for each message
+// Key and nonce
+static uint8_t key[KEY_SIZE] = {0}; 
+static uint8_t sequence_number = 0; // Will be set in send_ahoi_packet
 
-int main() {
-    const char *port = SENDER_SERIAL_PORT;
+
+int main(int argc, char *argv[]) {
+    const char *port = "/dev/ttyUSB0"; // It's neccesary let that here 
+    char *message = NULL;
+    int opt;
+    int option_index = 0;
+    char *key_hex = NULL;
+
+    struct option long_options[] = {
+        {"key", required_argument, 0, 'k'},
+        {0, 0, 0, 0}
+    };
+
+    while ((opt = getopt_long(argc, argv, "k:", long_options, &option_index)) != -1) {
+        switch (opt) {
+            case 'k':
+                key_hex = optarg;
+                break;
+            default:
+                print_usage(argv[0]);
+                return 1;
+        }
+    }
+
+    if (!key_hex) {
+        fprintf(stderr, "Error: Encryption key is required\n");
+        print_usage(argv[0]);
+        return 1;
+    }
+
+    if (process_key(key_hex, key, KEY_SIZE) != 0) {
+        return 1;
+    }
+
     int baudrate = B115200;
     int fd = open_serial_port(port, baudrate);
 
@@ -30,28 +60,44 @@ int main() {
     }
 
     char plaintext[256];
-    printf("Enter the word to send: ");
-    if (fgets(plaintext, sizeof(plaintext), stdin) == NULL) {
-        fprintf(stderr, "Error reading input\n");
-        close(fd);
-        return 1;
+    if (message) {
+        strncpy(plaintext, message, sizeof(plaintext));
+        plaintext[sizeof(plaintext)-1] = '\0';
+    } else {
+        printf("Enter the word to send: ");
+        if (fgets(plaintext, sizeof(plaintext), stdin) == NULL) {
+            fprintf(stderr, "Error reading input\n");
+            close(fd);
+            return 1;
+        }
+        plaintext[strcspn(plaintext, "\n")] = '\0';
     }
-    plaintext[strcspn(plaintext, "\n")] = '\0'; // delete newline
+
     size_t mlen = strlen(plaintext);
 
-    // Create Associated Data (AD)
-    uint8_t ad_header[HEADER_SIZE] = {0x56, 0x58, 0x00, 0x00, 0x00, 0x00};
-    size_t adlen = sizeof(ad_header);
-
+    // Create Associated Data (AD) (0x58 ID sender and 0x56 ID receiver)
+    uint8_t header[HEADER_SIZE] = {0x58, 0x56, 0x00, 0x00, sequence_number, (uint8_t)(mlen + TAG_SIZE)};
+    
     // Buffers for cipher
     uint8_t ciphertext[256];
     uint8_t tag[TAG_SIZE];
 
-    // encrypt the message
+    //Generate nonce from timestamp and sequence number
+    time_t now = time(NULL);
+    time_t hour_timestamp = (now / 3600) * 3600; // Round to hours
+    
+    uint8_t nonce[NONCE_SIZE] = {0};
+    memcpy(nonce, &hour_timestamp, sizeof(hour_timestamp));
+    nonce[sizeof(hour_timestamp)] = sequence_number;
+
+    printf("Using nonce: ");
+    for (int i = 0; i < NONCE_SIZE; i++) printf("%02X", nonce[i]);
+    printf("\n");
+    
     int enc_result = ascon_aead_encrypt(
         tag, ciphertext,
         (const uint8_t*)plaintext, mlen,
-        ad_header, adlen,
+        header, sizeof(header),  // The same header as AD
         nonce, key
     );
 
@@ -62,7 +108,6 @@ int main() {
     }
 
     // show the information
-    printf("Original: %s\n", plaintext);
     printf("Ciphertext (%zu bytes): ", mlen);
     for (size_t i = 0; i < mlen; i++) printf("%02X", ciphertext[i]);
     printf("\nTag (%d bytes): ", TAG_SIZE);
@@ -70,17 +115,16 @@ int main() {
     printf("\n");
 
     // send ciphertext + tag
-    send_ahoi_packet(fd, 0x56, 0x58, 0x00, ciphertext, mlen, tag, TAG_SIZE);
+    send_ahoi_packet(fd,header, ciphertext, mlen, tag, TAG_SIZE);
     
     close(fd);
     return 0;
 }
 
-void send_ahoi_packet(int fd, uint8_t dst_id, uint8_t src_id, uint8_t type, 
+void send_ahoi_packet(int fd, const uint8_t *header,
                      const uint8_t *payload, size_t payload_len,
                      const uint8_t *tag, size_t tag_len) {
-    static uint8_t sequence_number =0;
-    uint8_t header[HEADER_SIZE] = {src_id, dst_id, type, 0x00, sequence_number, (uint8_t)(payload_len + tag_len)};
+
     uint8_t packet[512];
     int packet_len = 0;
 

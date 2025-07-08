@@ -10,9 +10,6 @@ include(sender-config.cmake)
 include(receiver-config.cmake)
 
 set(ASCON_LIB_NAME "crypto_aead_${ALG_NAME}_${IMPL_LIST}")
-
-
-
 set(COMMONS_LIB_NAME "commons-lib")
 set(SENDER_TARGET "sender")
 set(SENDER_LIB_NAME "sender-objects")

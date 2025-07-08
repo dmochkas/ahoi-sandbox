@@ -4,3 +4,6 @@
 [submodule "ahoi-serial-c/thirdparty/ascon-c"]
 	path = ahoi-serial-c/thirdparty/ascon-c
 	url = https://github.com/ascon/ascon-c.git
+[submodule "ahoi-serial-c/thirdparty/cmocka"]
+	path = ahoi-serial-c/thirdparty/cmocka
+	url = https://gitlab.com/cmocka/cmocka.git

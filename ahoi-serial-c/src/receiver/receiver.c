@@ -10,8 +10,8 @@
 #include <getopt.h>
 
 #include "ascon.h"
-#include "commons/ahoi_serial.h"
-#include "commons/commons.h"
+#include "commons/serial_utils.h"
+#include "commons/common_defs.h"
 
 
 static uint8_t key[KEY_SIZE]= {0}; 
@@ -73,7 +73,7 @@ void decode_ahoi_packet(uint8_t *data, int len) {
 }
 
 int main(int argc, char *argv[]) {
-    const char *port = "/dev/cu.usbserial-1410";
+    const char *port = RECEIVER_SERIAL_PORT;
     int fd = open_serial_port(port, B115200);
     int opt;
     int option_index = 0;

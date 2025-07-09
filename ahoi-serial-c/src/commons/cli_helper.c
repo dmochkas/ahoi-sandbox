@@ -42,6 +42,7 @@ cli_parse_status parse_cli_arguments(int32_t argc, uint8_t* const * argv, uint8_
     return CLI_PARSE_OK;
 }
 
+// TODO: Unit test
 int process_key(const char *hex, uint8_t *key_buffer, size_t key_size) {
     size_t hex_len = strlen(hex);
 

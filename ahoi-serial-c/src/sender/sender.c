@@ -2,7 +2,6 @@
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
-#include <stdint.h>
 #include <stdlib.h>
 
 #include "commons/serial_utils.h"

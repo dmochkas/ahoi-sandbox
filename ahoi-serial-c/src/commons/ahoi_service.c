@@ -9,9 +9,15 @@
 #include "ascon.h"
 
 static uint8_t key[KEY_SIZE] = {0};
-static uint8_t tag[TAG_SIZE] = {0};
-static uint8_t ciphertext[MAX_PAYLOAD_SIZE] = {0};
-static uint8_t nonce[NONCE_SIZE] = {0};
+static uint8_t nonce_buf[NONCE_SIZE] = {0};
+static uint8_t ciphertext_buf[MAX_PAYLOAD_SIZE] = {0};
+static uint8_t tag_buf[TAG_SIZE] = {0};
+
+static uint8_t recv_buf[RECV_BUF_SIZE] = {0};
+static uint8_t payload_buf[MAX_PAYLOAD_SIZE] = {0};
+static ahoi_packet_t staging_packet = {
+    .payload = payload_buf
+};
 
 uint8_t seq_number = 0;
 
@@ -19,18 +25,41 @@ void store_key(uint8_t* new_key) {
     memcpy(key, new_key, KEY_SIZE);
 }
 
-nonce_gen_status generate_nonce(uint8_t* nonce_buf, size_t nonce_size) {
+void print_packet(const ahoi_packet_t *ahoi_packet) {
+    if (ahoi_packet == NULL) {
+        printf("ahoi_packet is NULL\n");
+        return;
+    }
+
+    printf("Ahoi Packet:\n");
+    printf("  Source:      %u\n", ahoi_packet->src);
+    printf("  Destination: %u\n", ahoi_packet->dst);
+    printf("  Type:        %u\n", ahoi_packet->type);
+    printf("  Flags:       %u\n", ahoi_packet->flags);
+    printf("  Sequence:    %u\n", ahoi_packet->seq);
+    printf("  PL Size:     %u\n", ahoi_packet->pl_size);
+
+    if (ahoi_packet->pl_size > 0 && ahoi_packet->payload != NULL) {
+        printf("  Payload:     ");
+        for (int i = 0; i < ahoi_packet->pl_size; i++) {
+            printf("%02x ", ahoi_packet->payload[i]);
+        }
+        printf("\n");
+    }
+}
+
+nonce_gen_status generate_nonce(const uint8_t seq, uint8_t* buf, const size_t nonce_size) {
     if (nonce_size < sizeof(time_t) + sizeof(uint8_t)) {
         return NONCE_GEN_KO;
     }
 
-    memset(nonce_buf, 0, nonce_size);
+    memset(buf, 0, nonce_size);
 
-    time_t now = time(NULL);
-    time_t hour_timestamp = htonl(now / SECONDS_IN_HOUR);
+    const time_t now = time(NULL);
+    const time_t hour_timestamp = htonl(now / SECONDS_IN_HOUR);
 
-    memcpy(nonce_buf, &hour_timestamp, sizeof(hour_timestamp));
-    memcpy(nonce_buf + sizeof(hour_timestamp), &seq_number, sizeof(seq_number));
+    memcpy(buf, &hour_timestamp, sizeof(hour_timestamp));
+    memcpy(buf + sizeof(hour_timestamp), &seq, sizeof(seq));
 
     return NONCE_GEN_OK;
 }
@@ -48,16 +77,16 @@ packet_gen_status generate_secure_ahoi_packet(const uint8_t src, const uint8_t d
             seq_number, (uint8_t)(payload_size + TAG_SIZE)
     };
 
-    if (generate_nonce(nonce, NONCE_SIZE) != NONCE_GEN_OK) {
+    if (generate_nonce(seq_number, nonce_buf, NONCE_SIZE) != NONCE_GEN_OK) {
         fprintf(stderr, "Nonce generation failed!\n");
         return PACKET_GEN_KO;
     }
 
-    int enc_result = ascon_aead_encrypt(
-            tag, ciphertext,
+    const int enc_result = ascon_aead_encrypt(
+            tag_buf, ciphertext_buf,
             (const uint8_t*)payload, payload_size,
             header, sizeof(header),  // The same header as AD
-            nonce, key
+            nonce_buf, key
     );
 
     if (enc_result != 0) {
@@ -73,8 +102,8 @@ packet_gen_status generate_secure_ahoi_packet(const uint8_t src, const uint8_t d
 //    printf("\n");
 
     memcpy(ahoi_packet, header, HEADER_SIZE);
-    memcpy(ahoi_packet->payload, ciphertext, payload_size);
-    memcpy(ahoi_packet->payload + payload_size, tag, TAG_SIZE);
+    memcpy(ahoi_packet->payload, ciphertext_buf, payload_size);
+    memcpy(ahoi_packet->payload + payload_size, tag_buf, TAG_SIZE);
 
     return PACKET_GEN_OK;
 }
@@ -107,18 +136,97 @@ packet_send_status send_ahoi_packet(int fd, const ahoi_packet_t* ahoi_packet) {
     ssize_t bytes_written = write(fd, escaped_packet, packet_len);
 
     if (bytes_written < 0) {
-        perror("Error writing to serial port");
+        fprintf(stderr, "Error writing to serial port");
         return PACKET_SEND_KO;
     } else if (bytes_written != packet_len) {
         fprintf(stderr, "Warning: Partial write (%zd of %d bytes)\n", bytes_written, packet_len);
         return PACKET_SEND_KO;
     }
 
-    printf("Sent escaped_packet (%d bytes): ", packet_len);
-    for (int i = 0; i < packet_len; i++) printf("%02X ", escaped_packet[i]);
-    printf("\n");
+    // printf("Sent escaped_packet (%d bytes): ", packet_len);
+    // for (int i = 0; i < packet_len; i++) printf("%02X ", escaped_packet[i]);
+    // printf("\n");
 
     increment_seq_number();
 
     return PACKET_SEND_OK;
+}
+
+packet_rcv_status receive_ahoi_packet(const int fd, void (*cb)(const ahoi_packet_t*)) {
+    int buf_pos = 0;
+    int in_packet = 0;
+    while (1) {
+        uint8_t byte;
+        if (read(fd, &byte, 1) != 1) continue;
+
+        if (!in_packet && byte == 0x10) {
+            if (read(fd, &byte, 1) == 1 && byte == 0x02) {
+                in_packet = 1;
+                buf_pos = 0;
+            }
+        } else if (in_packet) {
+            if (byte == 0x10) {
+                if (read(fd, &byte, 1) == 1) {
+                    if (byte == 0x03) {
+                        decode_ahoi_packet(recv_buf, buf_pos, &staging_packet);
+                        cb(&staging_packet);
+                        in_packet = 0;
+                    } else if (byte == 0x10) {
+                        recv_buf[buf_pos++] = 0x10;
+                    }
+                }
+            } else {
+                recv_buf[buf_pos++] = byte;
+            }
+        }
+    }
+}
+
+packet_decode_status decode_ahoi_packet(const uint8_t *data, const size_t len, ahoi_packet_t* ahoi_packet) {
+    if (len < HEADER_SIZE) {
+        fprintf(stderr,"Packet too short\n");
+        return PACKET_DECODE_KO;
+    }
+
+    const uint8_t *header = data;
+    const uint8_t total_len = header[5];
+    const uint8_t ciphertext_len = total_len - TAG_SIZE;
+
+    if (HEADER_SIZE + total_len > len) {
+        fprintf(stderr,"Invalid lengths: total=%d, cipher=%d, tag=%d, received=%ld\n",
+              total_len, ciphertext_len, TAG_SIZE, len);
+        return PACKET_DECODE_KO;
+    }
+
+    const uint8_t seq = header[4];
+    const uint8_t *ciphertext = data + HEADER_SIZE;
+    const uint8_t *tag = data + HEADER_SIZE + ciphertext_len;
+
+    generate_nonce(seq, nonce_buf, NONCE_SIZE);
+
+    // printf("=== DEBUG ===\n");
+    // printf("Nonce: ");
+    // for(int i=0; i<NONCE_SIZE; i++) printf("%02X", nonce_buf[i]);
+    // printf("\nAD Header: ");
+    // for(int i=0; i<HEADER_SIZE; i++) printf("%02X", header[i]);
+    // printf("\nCiphertext (%d): ", ciphertext_len);
+    // for(int i=0; i<ciphertext_len; i++) printf("%02X", ciphertext[i]);
+    // printf("\nTag: ");
+    // for(int i=0; i<TAG_SIZE; i++) printf("%02X", tag[i]);
+    // printf("\n=============\n");
+
+    const int dec_result = ascon_aead_decrypt(
+        ahoi_packet->payload,
+        tag, ciphertext, ciphertext_len,
+        header, HEADER_SIZE,
+        nonce_buf, key
+    );
+
+    if (dec_result != 0) {
+        fprintf(stderr,"Decryption failed.\n");
+        return PACKET_DECODE_KO;
+    }
+
+    seq_number = seq;
+    return PACKET_DECODE_OK;
 }

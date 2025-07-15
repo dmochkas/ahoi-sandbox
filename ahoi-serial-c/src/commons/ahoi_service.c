@@ -94,13 +94,6 @@ packet_gen_status generate_secure_ahoi_packet(const uint8_t src, const uint8_t d
         return PACKET_GEN_KO;
     }
 
-    // show the information
-//    printf("Ciphertext (%zu bytes): ", mlen);
-//    for (size_t i = 0; i < mlen; i++) printf("%02X", ciphertext[i]);
-//    printf("\nTag (%d bytes): ", TAG_SIZE);
-//    for (int i = 0; i < TAG_SIZE; i++) printf("%02X", tag[i]);
-//    printf("\n");
-
     memcpy(ahoi_packet, header, HEADER_SIZE);
     memcpy(ahoi_packet->payload, ciphertext_buf, payload_size);
     memcpy(ahoi_packet->payload + payload_size, tag_buf, TAG_SIZE);
@@ -121,12 +114,20 @@ packet_send_status send_ahoi_packet(int fd, const ahoi_packet_t* ahoi_packet) {
     escaped_packet[packet_len++] = 0x10;
     escaped_packet[packet_len++] = 0x02;
 
-    // Escape
-    for (int i = 0; i < HEADER_SIZE + ahoi_packet->pl_size; i++) {
+    // Escape header
+    for (int i = 0; i < HEADER_SIZE; i++) {
         if (abstract_packet[i] == 0x10) {
             escaped_packet[packet_len++] = 0x10;
         }
         escaped_packet[packet_len++] = abstract_packet[i];
+    }
+
+    // Escape payload
+    for (int i = 0; i < ahoi_packet->pl_size; i++) {
+        if (ahoi_packet->payload[i] == 0x10) {
+            escaped_packet[packet_len++] = 0x10;
+        }
+        escaped_packet[packet_len++] = ahoi_packet->payload[i];
     }
 
     // Framing: DLE-ETX
@@ -142,10 +143,6 @@ packet_send_status send_ahoi_packet(int fd, const ahoi_packet_t* ahoi_packet) {
         fprintf(stderr, "Warning: Partial write (%zd of %d bytes)\n", bytes_written, packet_len);
         return PACKET_SEND_KO;
     }
-
-    // printf("Sent escaped_packet (%d bytes): ", packet_len);
-    // for (int i = 0; i < packet_len; i++) printf("%02X ", escaped_packet[i]);
-    // printf("\n");
 
     increment_seq_number();
 
@@ -203,17 +200,6 @@ packet_decode_status decode_ahoi_packet(const uint8_t *data, const size_t len, a
     const uint8_t *tag = data + HEADER_SIZE + ciphertext_len;
 
     generate_nonce(seq, nonce_buf, NONCE_SIZE);
-
-    // printf("=== DEBUG ===\n");
-    // printf("Nonce: ");
-    // for(int i=0; i<NONCE_SIZE; i++) printf("%02X", nonce_buf[i]);
-    // printf("\nAD Header: ");
-    // for(int i=0; i<HEADER_SIZE; i++) printf("%02X", header[i]);
-    // printf("\nCiphertext (%d): ", ciphertext_len);
-    // for(int i=0; i<ciphertext_len; i++) printf("%02X", ciphertext[i]);
-    // printf("\nTag: ");
-    // for(int i=0; i<TAG_SIZE; i++) printf("%02X", tag[i]);
-    // printf("\n=============\n");
 
     const int dec_result = ascon_aead_decrypt(
         ahoi_packet->payload,

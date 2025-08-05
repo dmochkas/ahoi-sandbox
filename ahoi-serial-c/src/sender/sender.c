@@ -1,54 +1,55 @@
 #include <stdio.h>
 #include <string.h>
-#include <fcntl.h>
 #include <termios.h>
 #include <unistd.h>
+#include <stdlib.h>
 
-#include "commons/ahoi_serial.h"
+#include "commons/serial_utils.h"
+#include "commons/common_defs.h"
+#include "commons/cli_helper.h"
+#include "commons/ahoi_service.h"
 
-int main() {
+static uint8_t payload_buf[MAX_PAYLOAD_SIZE];
+
+int main(int argc, char *argv[]) {
+    uint8_t key_arg[KEY_SIZE];
+    if (parse_cli_arguments(argc, argv, key_arg, KEY_SIZE) == CLI_PARSE_KO) {
+        fprintf(stderr, "Error parsing cli arguments\n");
+        return EXIT_FAILURE;
+    }
+
+    store_key(key_arg);
+
     const char *port = SENDER_SERIAL_PORT;
     int baudrate = B115200;
     int fd = open_serial_port(port, baudrate);
 
-    if (fd == -1) return 1;
+    if (fd == -1) {
+        fprintf(stderr, "Error opening serial port\n");
+        return EXIT_FAILURE;
+    }
 
-    char payload[256];
+    char plaintext[MAX_PAYLOAD_SIZE];
     printf("Enter the word to send: ");
-    fgets(payload, sizeof(payload), stdin);
-    payload[strcspn(payload, "\n")] = 0;  // Remove newline
+    if (fgets(plaintext, sizeof(plaintext), stdin) == NULL) {
+        fprintf(stderr, "Error reading input\n");
+        close(fd);
+        return EXIT_FAILURE;
+    }
+    plaintext[strcspn(plaintext, "\n")] = '\0';
+    size_t pl_len = strlen(plaintext);
 
-    send_ahoi_packet(fd, 0x56, 0x58, 0x00, payload);
+    ahoi_packet_t ahoi_packet = {0};
+    ahoi_packet.payload = payload_buf;
+
+    if (generate_secure_ahoi_packet(0x58, 0x56, 0x00, 0x00, plaintext, pl_len, &ahoi_packet) != PACKET_GEN_OK) {
+        fprintf(stderr, "Error generating ahoi packet\n");
+        close(fd);
+        return EXIT_FAILURE;
+    }
+
+    send_ahoi_packet(fd, &ahoi_packet);
+    
     close(fd);
-    return 0;
-}
-
-void send_ahoi_packet(int fd, uint8_t dst_id, uint8_t src_id, uint8_t type, const char *payload) {
-    uint8_t header[6] = {src_id, dst_id, type, 0x00, 0x00, (uint8_t)strlen(payload)};
-    uint8_t packet[512];
-    int packet_len = 0;
-
-    // Framing: DLE-STX
-    packet[packet_len++] = 0x10;
-    packet[packet_len++] = 0x02;
-
-    // Escapar header + payload
-    for (int i = 0; i < 6; i++) {
-        if (header[i] == 0x10) packet[packet_len++] = 0x10;
-        packet[packet_len++] = header[i];
-    }
-    for (int i = 0; payload[i] != '\0'; i++) {
-        if (payload[i] == 0x10) packet[packet_len++] = 0x10;
-        packet[packet_len++] = payload[i];
-    }
-
-    // Framing: DLE-ETX
-    packet[packet_len++] = 0x10;
-    packet[packet_len++] = 0x03;
-
-    write(fd, packet, packet_len);
-
-    printf("Sent: ");
-    for (int i = 0; i < packet_len; i++) printf("%02X ", packet[i]);
-    printf("\n");
+    return EXIT_SUCCESS;
 }

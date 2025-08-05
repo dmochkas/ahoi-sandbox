@@ -2,9 +2,9 @@
 #include <fcntl.h>
 #include <termios.h>
 
-#include "commons/ahoi_serial.h"
+#include "commons/serial_utils.h"
 
-int open_serial_port(const char *port, int baudrate) {
+int open_serial_port(const uint8_t *port, int baudrate) {
     int fd = open(port, O_RDWR | O_NOCTTY | O_NDELAY);
     if (fd == -1) {
         perror("Error opening serial port");

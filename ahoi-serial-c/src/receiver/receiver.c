@@ -1,66 +1,37 @@
 #include <stdio.h>
-#include <string.h>
-#include <fcntl.h>
 #include <termios.h>
 #include <unistd.h>
+#include <stdlib.h>
 
-#include "commons/ahoi_serial.h"
+#include "commons/serial_utils.h"
+#include "commons/cli_helper.h"
+#include "commons/common_defs.h"
+#include "commons/ahoi_service.h"
 
-void decode_ahoi_packet(uint8_t *data, int len) {
-    if (len < 6) return;
 
-    uint8_t header[6];
-    memcpy(header, data, 6);
-    int payload_len = header[5];
-
-    printf("Received from ID=%d: ", header[0]);
-    for (int i = 6; i < 6 + payload_len; i++) {
-        putchar(data[i]);
-    }
-    printf("\n");
-
-    if (len >= 6 + payload_len + 6) {
-        uint8_t *footer = data + 6 + payload_len;
-        printf("Footer: ");
-        for (int i = 0; i < 6; i++) printf("%02X ", footer[i]);
-        printf("\n  - Power: %d%%, RSSI: %d%%, Bit errors: %d\n", footer[0], footer[1], footer[2]);
-    }
+void handle_ahoi_packet(const ahoi_packet_t* packet) {
+    print_packet(packet);
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+    uint8_t key_arg[KEY_SIZE];
+    if (parse_cli_arguments(argc, argv, key_arg, KEY_SIZE) == CLI_PARSE_KO) {
+        fprintf(stderr, "Error parsing cli arguments\n");
+        return EXIT_FAILURE;
+    }
+
+    store_key(key_arg);
+
     const char *port = RECEIVER_SERIAL_PORT;
     int fd = open_serial_port(port, B115200);
-    if (fd == -1) return 1;
 
-    uint8_t buffer[512];
-    int buf_pos = 0;
-    int in_packet = 0;
-
-    printf("Waiting for AHOI packets...\n");
-    while (1) {
-        uint8_t byte;
-        if (read(fd, &byte, 1) != 1) continue;
-
-        if (!in_packet && byte == 0x10) {
-            if (read(fd, &byte, 1) == 1 && byte == 0x02) {
-                in_packet = 1;
-                buf_pos = 0;
-            }
-        } else if (in_packet) {
-            if (byte == 0x10) {
-                if (read(fd, &byte, 1) == 1) {
-                    if (byte == 0x03) {
-                        decode_ahoi_packet(buffer, buf_pos);
-                        in_packet = 0;
-                    } else if (byte == 0x10) {
-                        buffer[buf_pos++] = 0x10;
-                    }
-                }
-            } else {
-                buffer[buf_pos++] = byte;
-            }
-        }
+    if (fd == -1) {
+        fprintf(stderr, "Error opening serial port\n");
+        return 1;
     }
+
+    printf("Waiting for AHOI packets (using ASCON decryption)...\n");
+    receive_ahoi_packet(fd, handle_ahoi_packet);
 
     close(fd);
     return 0;
